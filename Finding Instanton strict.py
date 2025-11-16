@@ -111,7 +111,12 @@ def Polymer_step(Q, k_eff, V_ext, idx_order, fd_step=1e-4, max_step=0.5):
 
     d = U.T @ g
 
-    if idx_order < len(k) and k[idx_order - 1] > 0.0 and len(k) >= 2:
+    Hess_idx = sum(1 for i in k if i < -1e-6)
+    
+    if Hess_idx == idx_order:
+        # Near/after the saddle: Newton–Raphson step
+        lam = 0.0
+    else:
         eps = 1e-6
         a = k[idx_order - 1] + eps
         b = k[idx_order] - eps
@@ -140,9 +145,6 @@ def Polymer_step(Q, k_eff, V_ext, idx_order, fd_step=1e-4, max_step=0.5):
         for i in range(g.size):
             if g[i] == 0:
                 g[i] += 1e-3
-    else:
-        # Near/after the saddle: Newton–Raphson step
-        lam = 0.0
 
     n = Q.size
     A = lam * np.eye(n) - H
@@ -434,7 +436,15 @@ def update_iteration():
     gnorm_history.append(gnorm)
     iter_count += 1
 
+    Hess_evals = np.linalg.eigvalsh(H)
+
     print(f"iteration {iter_count}: |grad V(Q)| = {gnorm:.3e}")
+    Saddle_idx = sum(1 for i in Hess_evals if i < -1e-6)
+    print("Hessian eigenvalues:",
+        np.array2string(Hess_evals,
+                        formatter={'float_kind': lambda x: f"{x:.3e}"},
+                        threshold=10,
+                        edgeitems=Saddle_idx + 3))
 
     k_indices = np.arange(n_beads_current)
     line_Q.set_data(k_indices, Q_current)
@@ -460,8 +470,6 @@ def update_iteration():
 
     # Stop if converged or hit max iterations
     if gnorm < 1e-10:
-        Hess_evals = np.linalg.eigvalsh(H)
-        Saddle_idx = sum(1 for i in Hess_evals if i < 0 and np.abs(i) > 1e-6)
         print("\n=== Saddle point found after", iter_count, "iterations ===")
         print(f"|grad V(Q*)| = {gnorm:.3e}")
         print("Hessian eigenvalues:",
